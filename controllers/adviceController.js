@@ -1,6 +1,4 @@
-const GeocoderMissingMsg = 'Location not found. Please try a different name.';
-
-exports.getAgriAdvice = async (req, res) => {
+export const getAgriAdvice = async (req, res) => {
   try {
     const { location } = req.body || {};
 
@@ -11,7 +9,7 @@ exports.getAgriAdvice = async (req, res) => {
     // Lazy-load dependency to avoid crashing if not installed yet
     let GeocoderClient, WeatherClient, SoilClient;
     try {
-      ({ GeocoderClient, WeatherClient, SoilClient } = require('openepi-client'));
+      ({ GeocoderClient, WeatherClient, SoilClient } = await import('openepi-client'));
     } catch (e) {
       return res.status(500).json({ error: 'Dependency missing: openepi-client is not installed in Backend. Please add it to proceed.' });
     }
@@ -29,7 +27,7 @@ exports.getAgriAdvice = async (req, res) => {
         throw new Error('GeocoderClient missing geocode/forward method');
       }
     } catch (e) {
-      return res.status(404).json({ error: GeocoderMissingMsg });
+      return res.status(404).json({ error: 'Location not found. Please try a different name.' });
     }
 
     const first = Array.isArray(geoResult?.results) ? geoResult.results[0] : (geoResult?.results || geoResult);
@@ -38,7 +36,7 @@ exports.getAgriAdvice = async (req, res) => {
     const longitude = first?.longitude ?? first?.lon ?? first?.coordinates?.lon ?? first?.geometry?.lng ?? first?.geometry?.lon;
 
     if (typeof latitude !== 'number' || typeof longitude !== 'number') {
-      return res.status(404).json({ error: GeocoderMissingMsg });
+      return res.status(404).json({ error: 'Location not found. Please try a different name.' });
     }
 
     // 2) Fetch Weather + Soil concurrently
@@ -75,5 +73,3 @@ exports.getAgriAdvice = async (req, res) => {
     return res.status(500).json({ error: 'Server error', details: err.message });
   }
 };
-
-module.exports = { getAgriAdvice: exports.getAgriAdvice };

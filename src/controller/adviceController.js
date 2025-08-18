@@ -1,132 +1,215 @@
-const axios = require('axios');
-const Advice = require('../models/advice');
-const KNN = require('ml-knn');
+import { supabase } from '../config/supabase.js';
+import axios from 'axios';
 
-// Mock dataset from Excel
-const dataset = [
-  { lat: 0.06797222222222223, lon: 34.43441666666666, ph: 6, n: 5, p: 9, k: 18, cluster: 2 },
-  { lat: 0.2943611111111111, lon: 34.39463888888889, ph: 6, n: 29, p: 40, k: 82, cluster: 1 },
-  { lat: 0.06688888888888889, lon: 34.43027777777777, ph: 5.7, n: 2, p: 3, k: 7, cluster: 2 },
-  { lat: 0.06869444444444445, lon: 34.42855555555555, ph: 6, n: 29, p: 40, k: 82, cluster: 2 },
-  { lat: 0.0675, lon: 34.44027777777777, ph: 6, n: 15, p: 21, k: 43, cluster: 4 },
-  { lat: 0.2908333333333333, lon: 34.40408333333333, ph: 5.86, n: 22, p: 30, k: 63, cluster: 1 },
-  { lat: 0.07030555555555555, lon: 34.44211111111111, ph: 6.12, n: 11, p: 16, k: 32, cluster: 4 },
-  { lat: 0.06830555555555555, lon: 34.44219444444444, ph: 6, n: 8, p: 12, k: 26, cluster: 4 },
-  { lat: 0.06383333333333334, lon: 34.44380555555555, ph: 5, n: 4, p: 6, k: 13, cluster: 4 },
-  { lat: 0.06436111111111112, lon: 34.44183333333333, ph: 5, n: 9, p: 13, k: 26, cluster: 4 },
-  { lat: 0.06947222222222223, lon: 34.44033333333333, ph: 7, n: 19, p: 29, k: 56, cluster: 4 },
-  { lat: 0.1241388888888889, lon: 34.20166666666667, ph: 6.21, n: 53, p: 75, k: 152, cluster: 0 },
-  { lat: 0.1233611111111111, lon: 34.20105555555556, ph: 6.28, n: 39, p: 58, k: 112, cluster: 0 },
-  { lat: 0.1223333333333333, lon: 34.20397222222223, ph: 6.3, n: 48, p: 68, k: 138, cluster: 0 },
-  { lat: 0.1239166666666667, lon: 34.20705555555556, ph: 6.42, n: 8, p: 12, k: 25, cluster: 0 },
-  { lat: 0.1241111111111111, lon: 34.20666666666667, ph: 6.4, n: 17, p: 30, k: 42, cluster: 0 },
-  { lat: 0.08733333333333333, lon: 34.33000000000001, ph: 6, n: 72, p: 100, k: 203, cluster: 3 },
-  { lat: 0.08311111111111111, lon: 34.33450000000001, ph: 6, n: 25, p: 36, k: 73, cluster: 3 },
-  { lat: 0.2948055555555555, lon: 34.39172222222222, ph: 6, n: 6, p: 10, k: 20, cluster: 1 },
-  { lat: 0.2938888888888889, lon: 34.39027777777778, ph: 6, n: 10, p: 15, k: 30, cluster: 1 },
-  { lat: 0.2985555555555556, lon: 34.39555555555555, ph: 6.89, n: 9, p: 13, k: 29, cluster: 1 },
-  { lat: 0.2943611111111111, lon: 34.39463888888889, ph: 6.16, n: 10, p: 16, k: 32, cluster: 1 },
-  { lat: 0.2943611111111111, lon: 34.39463888888889, ph: 6.06, n: 3, p: 6, k: 13, cluster: 1 },
-  { lat: 0.2943611111111111, lon: 34.39463888888889, ph: 6.8, n: 12, p: 17, k: 35, cluster: 1 },
-  { lat: 0.2855833333333333, lon: 34.39422222222222, ph: 7, n: 4, p: 6, k: 13, cluster: 1 },
-  { lat: 0.2967777777777778, lon: 34.39827777777778, ph: 5.86, n: 6, p: 13, k: 20, cluster: 1 },
-];
+// Remove mock dataset and KNN
 
-exports.getAdvice = async (req, res) => {
+export const getAdvice = async (req, res) => {
   try {
+    // Log the incoming request body for debugging
+    console.log('Incoming request body:', req.body);
+
     const { lat, lon, crop, userId } = req.body;
 
-    // KNN model for interpolation
-    const knn = new KNN(dataset.map(d => [d.lat, d.lon]), dataset.map(d => [d.ph, d.n, d.p, d.k]), {
-      k: 3,
-    });
+    // Validate input
+    if (
+      typeof lat !== 'number' ||
+      typeof lon !== 'number' ||
+      !crop ||
+      !userId
+    ) {
+      return res.status(400).json({
+        message: 'lat, lon (numbers), crop, and userId are required in the request body',
+        received: req.body
+      });
+    }
 
-    // Predict soil characteristics for given lat/lon
-    const [predictedPh, predictedN, predictedP, predictedK] = knn.predict([lat, lon]);
+    // Fetch soil data from Supabase by coordinates (example: nearest match)
+    const { data: soilRows, error: soilError } = await supabase
+      .from('geosoildata') // changed from 'soil_data' to 'geosoildata'
+      .select('*')
+      .order('id', { ascending: true }); // adjust as needed
+
+    if (soilError) throw soilError;
+    if (!soilRows || soilRows.length === 0) {
+      return res.status(404).json({ error: 'No soil data found in Supabase.' });
+    }
+
+    // For demo: just use the first row (replace with nearest neighbor logic if needed)
+    const soil = soilRows[0];
 
     // Determine county (mocked for Nairobi or dataset regions)
     const county = lat > -1.5 && lat < -1.0 && lon > 36.5 && lon < 37.0 ? 'Nairobi' : lat > 0 ? 'Kakamega' : 'Siaya';
 
-    // Generate recommendations
+    // Detailed, user-friendly soil recommendation
+    const ph = soil.pH ?? 0;
+    const n = soil.N ?? 0;
+    const n_kg_ha = soil.N_kg_ha ?? 0;
+    const n_target = soil.N_kg_ha_target_at_least ?? 60;
+    const n_fert = soil.N_kg_ha_fertilizer_application ?? 0;
+    const p = soil.P ?? 0;
+    const p_kg_ha = soil.P_kg_ha ?? 0;
+    const p_target = soil.P_kg_ha_target_at_least ?? 50;
+    const p_fert = soil.P_kg_ha_fertilizer_application ?? 0;
+    const k = soil.K ?? 0;
+    const k_kg_ha = soil.K_kg_ha ?? 0;
+    const k_target = soil.K_kg_ha_target_at_least ?? 30;
+    const k_fert = soil.K_kg_ha_fertilizer_application ?? 0;
+    const ec = soil.EC_us_cm ?? 0;
+    const temp = soil.Temp_deg_cel ?? 0;
+    const humidity = soil.Humidity_percent ?? 0;
+
+    // Use the selected crop in the recommendation
+    const selectedCrop = crop || 'maize';
+    // Use the detected county as the region if available, otherwise fall back to soil.Region
+    const detectedRegion = county || soil.Region || 'your region';
+
+    // Soil summary section with refined language
+    const soilSummary = `Soil Summary for your region (${detectedRegion}):\n\n` +
+      `• pH: ${ph} (${ph < 5.5 ? 'very acidic' : ph < 6.5 ? 'slightly acidic' : ph < 7.5 ? 'neutral' : 'alkaline'})\n` +
+      `• Nitrogen (N): ${n} ppm (~${n_kg_ha} kg/ha, target ≥${n_target} kg/ha)\n` +
+      `• Phosphorus (P): ${p} ppm (~${p_kg_ha} kg/ha, target ≥${p_target} kg/ha)\n` +
+      `• Potassium (K): ${k} ppm (~${k_kg_ha} kg/ha, target ≥${k_target} kg/ha)\n` +
+      `• EC: ${ec} µS/cm (${ec < 200 ? 'non-saline' : 'saline'})\n` +
+      `• Temperature: ${temp} °C\n` +
+      `• Humidity: ${humidity}%\n`;
+
+    // Crop-specific logic
+    let cropAdvice = '';
+    if (selectedCrop.toLowerCase() === 'maize') {
+      cropAdvice += `\n🌽 Maize Recommendation\n`;
+      cropAdvice += ph < 5.5 ? `Maize prefers pH 5.5–7.0. Apply lime to raise pH.` : ph < 7.5 ? `pH is suitable for maize.` : `High pH may reduce micronutrient availability.`;
+      cropAdvice += `\nNitrogen is essential for leaf growth. Apply Urea or CAN as recommended.`;
+      cropAdvice += `\nPhosphorus boosts root development. Use DAP or TSP at planting.`;
+      cropAdvice += `\nPotassium improves grain filling. Use MOP if K is low.`;
+    } else if (selectedCrop.toLowerCase() === 'beans') {
+      cropAdvice += `\n🫘 Beans Recommendation\n`;
+      cropAdvice += ph < 6.0 ? `Beans prefer pH 6.0–7.0. Apply lime if pH is below 6.` : ph < 7.5 ? `pH is suitable for beans.` : `High pH may reduce micronutrient uptake.`;
+      cropAdvice += `\nBeans fix their own nitrogen but need phosphorus for nodulation. Use TSP or DAP at planting.`;
+      cropAdvice += `\nPotassium helps disease resistance. Apply MOP if K is low.`;
+    } else if (selectedCrop.toLowerCase() === 'potatoes') {
+      cropAdvice += `\n🥔 Potatoes Recommendation\n`;
+      cropAdvice += ph < 5.0 ? `Potatoes tolerate acidic soils but pH < 5.0 may cause scab. Apply lime if needed.` : ph < 6.5 ? `pH is suitable for potatoes.` : `High pH may increase disease risk.`;
+      cropAdvice += `\nNitrogen is needed for tuber growth. Apply in split doses.`;
+      cropAdvice += `\nPhosphorus is critical for root and tuber development. Use DAP or TSP at planting.`;
+      cropAdvice += `\nPotassium is vital for tuber bulking and quality. Use MOP if K is low.`;
+    } else if (selectedCrop.toLowerCase() === 'peas') {
+      cropAdvice += `\n🌱 Peas Recommendation\n`;
+      cropAdvice += ph < 6.0 ? `Peas prefer pH 6.0–7.5. Apply lime if pH is below 6.` : ph < 7.5 ? `pH is suitable for peas.` : `High pH may reduce micronutrient uptake.`;
+      cropAdvice += `\nPeas fix nitrogen but need phosphorus for nodulation. Use TSP or DAP at planting.`;
+      cropAdvice += `\nPotassium helps pod filling. Apply MOP if K is low.`;
+    } else {
+      cropAdvice += `\n🌾 General Recommendation\n`;
+      cropAdvice += `Adjust pH, N, P, and K as per the above summary for optimal ${selectedCrop} growth.`;
+    }
+
+    // pH Management section
+    let phSection = `\n✅ Recommendation for ${selectedCrop.charAt(0).toUpperCase() + selectedCrop.slice(1)}\n`;
+    phSection += cropAdvice;
+    phSection += `\n\nOther Soil & Climate Considerations\n`;
+    phSection += `• EC (${ec} µS/cm): ${ec < 200 ? 'Safe; no salinity risk.' : 'High salinity, consider leaching or organic matter addition.'}\n`;
+    phSection += `• Temperature (${temp} °C) & Humidity (${humidity}%): Suitable for ${selectedCrop}. Ensure adequate soil moisture through mulching, irrigation, or timely planting with expected rains.\n`;
+
+    // Biodiversity & anti-desertification advice
+    let biodiversityAdvice = `🌿 Soil Biodiversity & Land Restoration\n`;
+    biodiversityAdvice += `• Maintain ground cover with cover crops or mulching to protect soil and provide habitat for beneficial organisms.\n`;
+    biodiversityAdvice += `• Incorporate organic matter (compost, manure, crop residues) to feed soil microbes and improve structure.\n`;
+    biodiversityAdvice += `• Practice reduced tillage or no-till to preserve soil life and prevent erosion.\n`;
+    biodiversityAdvice += `• Rotate crops and include legumes to diversify root systems and support soil fauna.\n`;
+    biodiversityAdvice += `• Prevent overgrazing and manage water runoff to reduce risk of desertification.\n`;
+    biodiversityAdvice += `• In arid or erosion-prone areas, establish windbreaks or plant native grasses to stabilize soil.\n`;
+    biodiversityAdvice += `• Monitor soil health regularly and adapt practices to maintain a living, resilient soil.\n`;
+
     const recommendations = {
-      crop: crop || 'maize',
-      soil: predictedPh < 7 ? `Apply 200 kg/ha of lime to neutralize acidic soil for ${crop || 'maize'}. ` : 'Soil pH is suitable for maize. ',
+      crop: selectedCrop,
+      soil: `${soilSummary}${phSection}`,
       weather: 'Expect moderate rainfall this week',
+      biodiversity: biodiversityAdvice,
+      alternativeCrops: [],
     };
 
-    if (predictedN < 60) recommendations.soil += 'Use YaraMila Power (high nitrogen) to address nitrogen deficiency. ';
-    if (predictedP < 50) recommendations.soil += 'Use DAP (high phosphorus) to address phosphorus deficiency. ';
-    if (predictedK < 30) recommendations.soil += 'Use Muriate of Potash (high potassium) to address potassium deficiency. ';
-
-    // Fetch weather data from OpenWeatherMap (if API key is available)
+    // Fetch weather data (unchanged)
     const weatherApiKey = process.env.OPENWEATHER_API_KEY || '5d918c233b784255aab124619251608';
     const weatherData = {};
-
-    console.log(weatherApiKey ? 'Fetching weather data...' : 'No OpenWeather API key provided, skipping weather data fetch.');
-    
     if (weatherApiKey) {
       const cities = [
         { name: 'Kakamega', lat: 0.2827, lon: 34.7519 },
         { name: 'Siaya', lat: 0.0636, lon: 34.2874 },
         { name: 'Nairobi', lat: -1.2833, lon: 36.8167 },
       ];
-
       for (const city of cities) {
-  try {
-    const response = await axios.get(
-      `https://api.weatherapi.com/v1/current.json?key=${weatherApiKey}&q=${city.lat},${city.lon}`
-    );
-    weatherData[city.name.toLowerCase()] = {
-      temperature: `${response.data.current.temp_c}°C`,
-      rainfall: response.data.current.precip_mm !== undefined ? `${response.data.current.precip_mm} mm` : '0 mm',
-      humidity: `${response.data.current.humidity}%`,
-      forecast: response.data.current.condition.text,
-    };
-  } catch (error) {
-    console.log(`Error fetching weather for ${city.name}:`, error.message);
-    weatherData[city.name.toLowerCase()] = {
-      temperature: 'N/A',
-      rainfall: 'N/A',
-      humidity: 'N/A',
-      forecast: 'Weather data unavailable',
-    };
-  }
-}
+        try {
+          const response = await axios.get(
+            `https://api.weatherapi.com/v1/current.json?key=${weatherApiKey}&q=${city.lat},${city.lon}`
+          );
+          weatherData[city.name.toLowerCase()] = {
+            temperature: `${response.data.current.temp_c}°C`,
+            rainfall: response.data.current.precip_mm !== undefined ? `${response.data.current.precip_mm} mm` : '0 mm',
+            humidity: `${response.data.current.humidity}%`,
+            forecast: response.data.current.condition.text,
+          };
+        } catch (error) {
+          weatherData[city.name.toLowerCase()] = {
+            temperature: 'N/A',
+            rainfall: 'N/A',
+            humidity: 'N/A',
+            forecast: 'Weather data unavailable',
+          };
+        }
+      }
     }
+
+    // Log user access history (in-memory for demo; replace with DB in production)
+    if (!global.userAccessHistory) global.userAccessHistory = {};
+    if (!global.userAccessHistory[userId]) global.userAccessHistory[userId] = [];
+    global.userAccessHistory[userId].push({
+      accessedAt: new Date().toISOString(),
+      county,
+      crop: selectedCrop,
+    });
+    // Only keep the last 10 accesses for brevity
+    const userHistory = global.userAccessHistory[userId].slice(-10);
 
     const adviceData = {
       county,
       latitude: lat,
       longitude: lon,
       soilData: {
-        ph: predictedPh.toFixed(1),
-        n: predictedN.toFixed(0),
-        p: predictedP.toFixed(0),
-        k: predictedK.toFixed(0),
+        ph: soil.pH ?? 0,
+        nitrogen: soil.N ?? 0,
+        phosphorus: soil.P ?? 0,
+        potassium: soil.K ?? 0,
       },
       recommendations,
       totalRain: weatherData[county.toLowerCase()]?.rainfall?.split(' ')[0] || '0',
       weatherData,
+      history: userHistory, // Add access history to the response
     };
 
-    // Save to MySQL
-    await Advice.create({
-      userId: userId || 'default_user',
+    // Log soil and insert object for debugging
+    console.log("Soil object:", soil);
+    const insertObj = {
+      userid: userId || 'default_user',
       county,
       latitude: lat,
       longitude: lon,
-      soilData_ph: adviceData.soilData.ph,
-      soilData_n: adviceData.soilData.n,
-      soilData_p: adviceData.soilData.p,
-      soilData_k: adviceData.soilData.k,
-      recommendations_crop: adviceData.recommendations.crop,
-      recommendations_soil: adviceData.recommendations.soil,
-      recommendations_weather: adviceData.recommendations.weather,
-      totalRain: adviceData.totalRain,
-      weatherData_kakamega: adviceData.weatherData.kakamega,
-      weatherData_siaya: adviceData.weatherData.siaya,
-      weatherData_nairobi: adviceData.weatherData.nairobi,
-    });
+      soildata_ph: soil.pH ?? 0,
+      soildata_n: soil.N ?? 0,
+      soildata_p: soil.P ?? 0,
+      soildata_k: soil.K ?? 0,
+      recommendations_crop: recommendations.crop,
+      recommendations_soil: recommendations.soil,
+      recommendations_weather: recommendations.weather,
+      totalrain: adviceData.totalRain,
+      weatherdata_kakamega: weatherData.kakamega,
+      weatherdata_siaya: weatherData.siaya,
+      weatherdata_nairobi: weatherData.nairobi,
+    };
+    console.log("Insert object:", insertObj);
+    // Save advice to Supabase
+    const { error: insertError } = await supabase
+      .from('advice')
+      .insert([insertObj]);
+    if (insertError) throw insertError;
 
     res.status(200).json(adviceData);
   } catch (error) {
@@ -134,37 +217,19 @@ exports.getAdvice = async (req, res) => {
   }
 };
 
-exports.getProfile = async (req, res) => {
+export const getProfile = async (req, res) => {
   try {
     const { userId } = req.params;
-    const history = await Advice.findAll({
-      where: { userId },
-      order: [['createdAt', 'DESC']],
-    });
+    const { data: history, error } = await supabase
+      .from('advice') // replace with your actual advice table name
+      .select('*')
+      .eq('userId', userId)
+      .order('createdAt', { ascending: false });
+    if (error) throw error;
     res.status(200).json(history);
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
 
-// Simplified agricultural advice endpoint
-exports.getAgriAdvice = async (req, res) => {
-  try {
-    const { location } = req.body || {};
-
-    if (!location || typeof location !== 'string' || !location.trim()) {
-      return res.status(400).json({ error: 'Please provide a valid location string in the request body.' });
-    }
-
-    // Mock response for now - can be enhanced later
-    const response = {
-      location: { name: location, latitude: 0, longitude: 0 },
-      weather: { message: 'Weather data will be available soon' },
-      soil: { message: 'Soil data will be available soon' }
-    };
-
-    return res.status(200).json(response);
-  } catch (err) {
-    return res.status(500).json({ error: 'Server error', details: err.message });
-  }
-};
+// getAgriAdvice can remain as is or be updated later

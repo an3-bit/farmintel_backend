@@ -1,17 +1,24 @@
 import express from "express";
 import fetch from "node-fetch";
 import cors from "cors";
+import adviceRoutes from "./routes/adviceRoutes.js";
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 // Allow your frontend's origin
 app.use(cors({
-  origin: "https://8080-firebase-farmintel-1754904703142.cluster-fbfjltn375c6wqxlhoehbz44sk.cloudworkstations.dev"
+  origin: [
+    "https://farmintel-frontend.vercel.app",
+    "http://localhost:8081"
+  ]
 }));
 
-// Parse JSON bodies
+// Parse JSON bo
 app.use(express.json());
+
+// Register your main API routes (using Supabase in controllers)
+app.use('/api', adviceRoutes);
 
 // Proxy for OpenEPI requests
 app.post("/proxy", async (req, res) => {

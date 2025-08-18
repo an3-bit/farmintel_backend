@@ -1,10 +1,9 @@
-const express = require('express');
+import express from 'express';
+import { getAdvice } from '../src/controller/adviceController.js';
+
 const router = express.Router();
 
-// Controller
-const { getAgriAdvice } = require('../controllers/adviceController');
-
 // New endpoint: POST /api/get-agri-advice
-router.post('/get-agri-advice', getAgriAdvice);
+router.post('/get-agri-advice', getAdvice);
 
-module.exports = router;
+export default router;
