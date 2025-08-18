@@ -2,18 +2,9 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import adviceRoutes from './routes/adviceRoutes.js';
-import { supabase } from './src/config/supabase.js';
-
-// Global error handlers
-process.on('uncaughtException', (err) => {
-  console.error('Uncaught Exception:', err);
-});
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection:', reason);
-});
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 const corsOptions = {
   origin: [
@@ -34,16 +25,20 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', message: 'Server is running' });
 });
 
-// Supabase connection check on startup
-(async () => {
-  const { error } = await supabase.from('advice').select('*').limit(1);
-  if (error) {
-    console.error('❌ Supabase connection failed:', error.message);
-  } else {
-    console.log('✅ Supabase connection successful!');
-  }
+// Root endpoint: show a user-friendly message
+app.get('/', (req, res) => {
+  res.send('<div style="font-family:sans-serif;text-align:center;margin-top:10vh;font-size:2rem;color:#228B22;">Your backend is running.</div>');
+});
 
-  app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-  });
-})();
+// Global error handlers (optional, but good for logging)
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection:', reason);
+});
+
+// Start the server
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
