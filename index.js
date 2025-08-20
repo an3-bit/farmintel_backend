@@ -10,7 +10,8 @@ const corsOptions = {
   origin: [
     'http://localhost:3000',
     'https://farmintel-frontend.vercel.app',
-    'http://localhost:8080'
+    'http://localhost:8080',
+    'https://farmintel-backend.vercel.app'
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
