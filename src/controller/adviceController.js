@@ -297,18 +297,37 @@ function generateIntelligentBiodiversityAdvice(neighborhood, soil, selectedCrop,
 // Function to get neighborhood name using OpenStreetMap API
 async function getNeighborhoodName(lat, lon) {
   try {
-    const response = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&addressdetails=1&zoom=16`);
+    console.log(`Getting location for coordinates: ${lat}, ${lon}`);
+    
+    const response = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&addressdetails=1&zoom=16&accept-language=en`);
     const data = await response.json();
     
-    console.log('OpenStreetMap response:', data); // Debug log
+    console.log('OpenStreetMap full response:', JSON.stringify(data, null, 2)); // Detailed debug log
     
-    // Extract neighborhood/suburb name with better fallback logic
+    // Extract neighborhood/suburb name with comprehensive fallback logic
     if (data.address) {
-      // Try to get the most specific location name
-      const neighborhood = data.address.suburb || data.address.neighbourhood || data.address.city_district || data.address.district;
-      const city = data.address.city || data.address.town || data.address.municipality;
-      const county = data.address.county || data.address.state;
+      console.log('Address object found:', data.address);
       
+      // Try multiple possible neighborhood fields
+      const neighborhood = data.address.suburb || 
+                         data.address.neighbourhood || 
+                         data.address.city_district || 
+                         data.address.district || 
+                         data.address.quarter ||
+                         data.address.area;
+      
+      const city = data.address.city || 
+                   data.address.town || 
+                   data.address.municipality || 
+                   data.address.county;
+      
+      const county = data.address.county || 
+                     data.address.state || 
+                     data.address.province;
+      
+      console.log('Extracted fields:', { neighborhood, city, county });
+      
+      // Build location string with priority logic
       if (neighborhood && city && neighborhood !== city) {
         return `${neighborhood}, ${city}`;
       } else if (neighborhood) {
@@ -320,23 +339,58 @@ async function getNeighborhoodName(lat, lon) {
       }
     }
     
-    // If no specific neighborhood found, try to extract from display_name
+    // If no address object, try to parse display_name
     if (data.display_name) {
+      console.log('Using display_name:', data.display_name);
       const parts = data.display_name.split(', ');
+      console.log('Display name parts:', parts);
+      
       // Look for neighborhood-like names (usually 2nd or 3rd part)
       if (parts.length >= 3) {
-        const potentialNeighborhood = parts[1] || parts[2];
-        if (potentialNeighborhood && !potentialNeighborhood.includes('County') && !potentialNeighborhood.includes('Kenya')) {
-          return `${potentialNeighborhood}, ${parts[0]}`;
+        // Skip parts that are too generic
+        const skipWords = ['County', 'Kenya', 'Africa', 'Province', 'State', 'Region'];
+        
+        for (let i = 1; i < Math.min(4, parts.length); i++) {
+          const part = parts[i].trim();
+          if (part && !skipWords.some(word => part.includes(word)) && part.length > 2) {
+            return `${part}, ${parts[0]}`;
+          }
         }
       }
+      
+      // If no good neighborhood found, return the city
+      if (parts.length >= 2) {
+        return parts[0];
+      }
+      
       return parts[0] || 'Unknown area';
     }
     
-    return 'Unknown area';
+    // Final fallback - use coordinates to estimate area
+    console.log('No location data found, using coordinate-based fallback');
+    if (lat >= -1.5 && lat <= -1.0 && lon >= 36.7 && lon <= 37.0) {
+      return 'Nairobi Metropolitan Area';
+    } else if (lat >= -1.0 && lat <= -0.5 && lon >= 36.7 && lon <= 37.0) {
+      return 'Central Kenya';
+    } else if (lat >= -1.5 && lat <= -1.0 && lon >= 37.0 && lon <= 37.5) {
+      return 'Eastern Kenya';
+    } else {
+      return 'Kenya';
+    }
+    
   } catch (error) {
     console.error('Error getting neighborhood:', error);
-    return 'Unknown area';
+    
+    // Fallback based on coordinates if API fails
+    if (lat >= -1.5 && lat <= -1.0 && lon >= 36.7 && lon <= 37.0) {
+      return 'Nairobi Metropolitan Area';
+    } else if (lat >= -1.0 && lat <= -0.5 && lon >= 36.7 && lon <= 37.0) {
+      return 'Central Kenya';
+    } else if (lat >= -1.5 && lat <= -1.0 && lon >= 37.0 && lon <= 37.5) {
+      return 'Eastern Kenya';
+    } else {
+      return 'Kenya';
+    }
   }
 }
 
